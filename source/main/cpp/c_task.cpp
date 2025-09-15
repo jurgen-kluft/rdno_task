@@ -60,8 +60,8 @@ class callback_t;
 
 struct opcode_t
 {
-    u16 m_type : 3;   // 0= conditional, 1 = callback, 2 = timeout, 3 = timed, 7 = u64 value
-    u16 m_index : 13; // index (0 to 8191)
+    u16 m_type : 3;    // 0= conditional, 1 = callback, 2 = timeout, 3 = timed, 7 = u64 value
+    u16 m_index : 13;  // index (0 to 8191)
 };
 
 struct instruction_t
@@ -109,32 +109,75 @@ struct scheduler_t
     s16            m_taskqueueMaxCount;
 };
 
-action_t register_action(scheduler_t* scheduler, callback_t cb)
+struct callback_t
 {
-    if (scheduler->m_callbackCount + 1 > scheduler->m_callbackMaxCount)
-        return;
+    instruction_t m_instruction;
+    bool (*m_function)(void*);
+    void* m_param;
+};
 
-    action_t action = (action_t)scheduler->m_callbackCount;
-    scheduler->m_callbacks[scheduler->m_callbackCount++] = cb;
-    return action;
+struct condition_t
+{
+    callback_t* m_condition;
+    callback_t* m_action;
+    callback_t* m_onFalse;
+};
+
+struct timeout_t
+{
+    u64         m_timeoutInMillis;
+    callback_t* m_check;
+    callback_t* m_onAction;
+    callback_t* m_onTimeout;
+};
+
+bool isConnectedToWiFi(void* param)
+{
+    return false;
 }
 
-void add_timeout(scheduler_t* scheduler, value_t timeoutInMillis, action_t actionIndex, s16 onTimeoutIndex)
+bool startConnectionToRemoteServer(void* param)
 {
-    if (scheduler->m_instructionCount + 1 > scheduler->m_instructionMaxCount)
-        return;
-
-    instruction_t& instr = scheduler->m_instructions[scheduler->m_instructionCount++];
-    instr.m_opcodes[0]   = {2, 0}; // timeout
-    instr.m_opcodes[1]   = {7, (s16)scheduler->m_valueCount};
-    instr.m_opcodes[2]   = {1, actionIndex};
-    instr.m_opcodes[3]   = {1, onTimeoutIndex};
-
-    if (scheduler->m_valueCount + 1 > scheduler->m_valueMaxCount)
-        return;
-
-    scheduler->m_values[scheduler->m_valueCount++] = timeoutInMillis;
+    return false;
 }
+
+bool startReceiveNewConfigurationFromAccessPoint(void* param)
+{
+    return false;
+}
+
+bool IsConnectedToRemoteServer(void* param)
+{
+    return false;
+}
+
+timeout_t connectToWiFi = {10 * 1000, isConnectedToWiFi, startConnectionToRemoteServer, startReceiveNewConfigurationFromAccessPoint};
+timeout_t connectToRemoteTCPServer = {60 * 1000, isConnectedToRemoteServer, startReadingSensors, startReceiveNewConfigurationFromAccessPoint};
+
+struct timed_t
+{
+    u64         m_intervalInMillis;
+    u64         m_lastRunTimeInMillis;
+    callback_t* m_onAction;
+};
+
+bool readBH1750Sensor(void* param)
+{
+    return false;
+}
+bool readBME280Sensor(void* param)
+{
+    return false;
+}
+bool readSCD41Sensor(void* param)
+{
+    return false;
+}
+
+timed_t readBH1750SensorTask = {2 * 1000, 0, readBH1750Sensor};
+timed_t readBME280SensorTask = {60 * 1000, 0, readBME280Sensor};
+timed_t readSCD41SensorTask  = {5 * 1000, 0, readSCD41Sensor};
+
 
 #ifdef TARGET_ESP32
 
@@ -145,8 +188,8 @@ namespace ncore
     namespace ntask
     {
 
-    } // namespace ntask
-} // namespace ncore
+    }  // namespace ntask
+}  // namespace ncore
 
 #else
 
@@ -155,7 +198,7 @@ namespace ncore
     namespace ntask
     {
 
-    } // namespace ntask
-} // namespace ncore
+    }  // namespace ntask
+}  // namespace ncore
 
 #endif
