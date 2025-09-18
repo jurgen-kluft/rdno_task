@@ -56,41 +56,25 @@ Action Send Sensor Data To Remote TCP Server
 
 */
 
-class callback_t;
+class action_t;
+
+enum eOpcodeType
+{
+    OPCODE_TYPE_FUNCTION = 0,
+    OPCODE_TYPE_SINGLE   = 1,
+    OPCODE_TYPE_TIMEOUT  = 2,
+    OPCODE_TYPE_TIMED    = 3,
+};
 
 struct opcode_t
 {
-    u16 m_type : 3;    // 0= conditional, 1 = callback, 2 = timeout, 3 = timed, 7 = u64 value
-    u16 m_index : 13;  // index (0 to 8191)
-};
-
-struct instruction_t
-{
-    opcode_t m_opcodes[4];
-};
-
-struct conditional_t
-{
-    opcode_t m_type;
-    opcode_t m_condition;
-    opcode_t m_onTrue;
-    opcode_t m_onFalse;
-};
-
-struct timeout_t
-{
-    opcode_t m_type;
-    opcode_t m_timeout;
-    opcode_t m_action;
-    opcode_t m_onTimeout;
-};
-
-struct timed_t
-{
-    opcode_t m_type;
-    opcode_t m_interval;
-    opcode_t m_lastRunTimeInMillis;
-    opcode_t m_onAction;
+    inline opcode_t(s16 type)
+        : m_type(type)
+        , m_index(-1)
+    {
+    }
+    s16 m_type;   // type
+    s16 m_index;  // index (0 to 8191)
 };
 
 struct scheduler_t
@@ -98,7 +82,7 @@ struct scheduler_t
     instruction_t* m_instructions;
     s16            m_instructionCount;
     s16            m_instructionMaxCount;
-    callback_t*    m_callbacks;
+    action_t*      m_callbacks;
     s16            m_callbackCount;
     s16            m_callbackMaxCount;
     u64*           m_values;
@@ -109,75 +93,117 @@ struct scheduler_t
     s16            m_taskqueueMaxCount;
 };
 
-struct callback_t
+//
+// Concepts
+//
+typedef void* action_t;
+
+struct function_t
 {
-    instruction_t m_instruction;
+    inline function_t(bool (*function)(void*), void* param)
+        : m_type(OPCODE_TYPE_FUNCTION)
+        , m_function(function)
+        , m_param(param)
+    {
+    }
+    opcode_t m_type;
     bool (*m_function)(void*);
     void* m_param;
 };
 
-struct condition_t
+struct single_t
 {
-    callback_t* m_condition;
-    callback_t* m_action;
-    callback_t* m_onFalse;
+    inline single_t(action_t* onAction)
+        : m_type(OPCODE_TYPE_SINGLE)
+        , m_onAction(onAction)
+    {
+    }
+    opcode_t  m_type;
+    action_t* m_onAction;
 };
 
 struct timeout_t
 {
-    u64         m_timeoutInMillis;
-    callback_t* m_check;
-    callback_t* m_onAction;
-    callback_t* m_onTimeout;
+    inline timeout_t(u64 timeoutInMillis, action_t* onAction, action_t* onFinished, action_t* onTimeout)
+        : m_type(OPCODE_TYPE_TIMEOUT)
+        , m_timeoutInMillis(timeoutInMillis)
+        , m_onAction(onAction)
+        , m_onFinished(onFinished)
+        , m_onTimeout(onTimeout)
+    {
+    }
+    opcode_t  m_type;
+    u64       m_timeoutInMillis;
+    action_t* m_onAction;
+    action_t* m_onFinished;
+    action_t* m_onTimeout;
 };
-
-bool isConnectedToWiFi(void* param)
-{
-    return false;
-}
-
-bool startConnectionToRemoteServer(void* param)
-{
-    return false;
-}
-
-bool startReceiveNewConfigurationFromAccessPoint(void* param)
-{
-    return false;
-}
-
-bool IsConnectedToRemoteServer(void* param)
-{
-    return false;
-}
-
-timeout_t connectToWiFi = {10 * 1000, isConnectedToWiFi, startConnectionToRemoteServer, startReceiveNewConfigurationFromAccessPoint};
-timeout_t connectToRemoteTCPServer = {60 * 1000, isConnectedToRemoteServer, startReadingSensors, startReceiveNewConfigurationFromAccessPoint};
 
 struct timed_t
 {
-    u64         m_intervalInMillis;
-    u64         m_lastRunTimeInMillis;
-    callback_t* m_onAction;
+    inline timed_t(u64 intervalInMillis, action_t* onAction)
+        : m_type(OPCODE_TYPE_TIMED)
+        , m_onAction(onAction)
+        , m_intervalInMillis(intervalInMillis)
+        , m_lastRunTimeInMillis(0)
+    {
+    }
+    opcode_t  m_type;
+    action_t* m_onAction;
+    u64       m_intervalInMillis;
+    u64       m_lastRunTimeInMillis;
 };
 
-bool readBH1750Sensor(void* param)
-{
-    return false;
-}
-bool readBME280Sensor(void* param)
-{
-    return false;
-}
-bool readSCD41Sensor(void* param)
-{
-    return false;
-}
+// ----------------------------------------------------------------------------------
+// ----------------------------------------------------------------------------------
 
-timed_t readBH1750SensorTask = {2 * 1000, 0, readBH1750Sensor};
-timed_t readBME280SensorTask = {60 * 1000, 0, readBME280Sensor};
-timed_t readSCD41SensorTask  = {5 * 1000, 0, readSCD41Sensor};
+// Task based actions
+bool funcStartConnectionToWiFi(void* param) { return false; }
+bool funcIsConnectedToWiFi(void* param) { return false; }
+bool funcStartConnectionToRemoteServer(void* param) { return false; }
+bool funcIsConnectedToRemoteServer(void* param) { return false; }
+bool funcStartReceiveNewConfigurationFromAccessPoint(void* param) { return false; }
+bool funcStartReadingSensors(void* param) { return false; }
 
+bool funcReadBH1750Sensor(void* param) { return false; }
+bool funcReadBME280Sensor(void* param) { return false; }
+bool funcReadSCD41Sensor(void* param) { return false; }
+
+// Actions
+
+function_t task_functions[] = {
+    function_t(funcIsConnectedToWiFi, nullptr),                            // WiFi
+    function_t(funcStartConnectionToWiFi, nullptr),                        // WiFi
+    function_t(funcIsConnectedToRemoteServer, nullptr),                    // Remote Server
+    function_t(funcStartConnectionToRemoteServer, nullptr),                // Remote Server
+    function_t(funcStartReceiveNewConfigurationFromAccessPoint, nullptr),  // Configuration
+    function_t(funcStartReadingSensors, nullptr),                          // Read Sensors
+    function_t(funcReadBH1750Sensor, nullptr),                             // BH1750 sensor reading
+    function_t(funcReadBME280Sensor, nullptr),                             // BME280 sensor reading
+    function_t(funcReadSCD41Sensor, nullptr),                              // SCD41 sensor reading
+};
+
+// Tasks that run one single time
+
+single_t single_tasks[] = {
+    single_t(&callbacks[1]),  // Start WiFi connection
+    single_t(&callbacks[4]),  // Start Configuration from Access Point
+};
+
+// Tasks with a timeout
+
+timeout_t timeout_tasks[] = {
+    timeout_t(10 * 1000, &callbacks[0], &callbacks[3], &callbacks[4]),  // WiFi connection
+    timeout_t(60 * 1000, &callbacks[2], &callbacks[5], &callbacks[4]),  // Remote Server connection
+};
+
+// Tasks running on a time interval
+
+timed_t timed_tasks[] = {
+    timed_t(2 * 1000, &task_functions[6]),   // BH1750 sensor reading task
+    timed_t(60 * 1000, &task_functions[7]),  // BME280 sensor reading task
+    timed_t(5 * 1000, &task_functions[8]),   // SCD41 sensor reading task
+};
 
 #ifdef TARGET_ESP32
 
