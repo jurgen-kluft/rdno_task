@@ -77,10 +77,10 @@ namespace ncore
     {
         void clear();
 
-        void add_task(function_t function, state_t* state);
-        void add_guard_task(function_t function, state_t* state);
-        void add_timeout_task(s32 timeout_ms, function_t function, state_t* state);
-        void add_periodic_task(s32 period_ms, function_t function, state_t* state);
+        void add_task(function_t fn, state_t* state);
+        void add_guard_task(function_t onOk, function_t onError, state_t* state);
+        void add_periodic_task(s32 period_ms, function_t fn, state_t* state);
+        void add_timeout_task(s32 timeout_ms, function_t fn, function_t onTimeOut, state_t* state);
     };
 
     struct wifi_state_t;
@@ -108,6 +108,7 @@ namespace ncore
 
     // WiFi and Remote Server
     task_result_t func_is_connected(scheduler_t* scheduler, state_t* state);
+    task_result_t func_is_disconnected(scheduler_t* scheduler, state_t* state);
 
     // Configuration Mode
     task_result_t func_start_configuration(scheduler_t* scheduler, state_t* state);
@@ -125,37 +126,34 @@ namespace ncore
     task_result_t func_remote_server_start(scheduler_t* scheduler, state_t* state);
     task_result_t func_remote_server_until_connected(scheduler_t* scheduler, state_t* state);
     task_result_t func_config_start(scheduler_t* scheduler, state_t* state);
-    task_result_t func_config_wait_for_config(scheduler_t* scheduler, state_t* state);
+    task_result_t func_config_until_received(scheduler_t* scheduler, state_t* state);
     task_result_t func_schedule_sensor_reading(scheduler_t* scheduler, state_t* state);
 
     task_result_t func_schedule_sensor_reading(scheduler_t* scheduler, state_t* state)
     {
         scheduler->clear();
-        scheduler->add_guard_task(func_is_connected, state);
+        scheduler->add_guard_task(func_is_connected, func_is_disconnected, state);
         scheduler->add_periodic_task(5000, func_read_sensor_BH1750, state);
         scheduler->add_periodic_task(60000, func_read_sensor_BME280, state);
         scheduler->add_periodic_task(5000, func_read_sensor_SCD41, state);
     }
 
-    task_result_t func_config_receive_new_configuration(scheduler_t* scheduler, state_t* state)
+    task_result_t func_config_start(scheduler_t* scheduler, state_t* state)
+    {
+        // TODO start AP mode etc..
+
+        scheduler->clear();
+        scheduler->add_timeout_task(60000, func_config_until_received, func_config_start, state);
+        return RESULT_DONE;
+    }
+
+    task_result_t func_config_until_received(scheduler_t* scheduler, state_t* state)
     {
         if (func_receive_configuration(scheduler, state) == RESULT_DONE)
         {
             scheduler->clear();
             func_wifi_start(scheduler, state);
         }
-    }
-
-    task_result_t func_config_wait_for_connection(scheduler_t* scheduler, state_t* state)
-    {
-        // TODO
-        return RESULT_OK;
-    }
-
-    task_result_t func_config_start(scheduler_t* scheduler, state_t* state)
-    {
-        // TODO
-        return RESULT_DONE;
     }
 
     task_result_t func_remote_server_start(scheduler_t* scheduler, state_t* state)
@@ -172,15 +170,14 @@ namespace ncore
 
     task_result_t func_wifi_start(scheduler_t* scheduler, state_t* state)
     {
+        scheduler->clear();
         if (func_start_connection_to_wifi(scheduler, state) == RESULT_ERROR)
         {
-            scheduler->clear();
             scheduler->add_task(func_config_start, state);
         }
         else
         {
-            scheduler->clear();
-            scheduler->add_timeout_task(5000, func_wifi_until_connected, state);
+            scheduler->add_timeout_task(5000, func_wifi_until_connected, func_wifi_start, state);
         }
         return RESULT_DONE;
     }
@@ -193,6 +190,7 @@ namespace ncore
 
     task_result_t func_setup(scheduler_t* scheduler, state_t* state)
     {
+        scheduler->clear();
         scheduler->add_task(func_wifi_start, state);
         return RESULT_DONE;
     }
