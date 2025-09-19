@@ -1,3 +1,4 @@
+#include "rdno_core/c_target.h"
 #include "rdno_task/c_task.h"
 
 // Documentation:
@@ -56,175 +57,137 @@ Action Send Sensor Data To Remote TCP Server
 
 */
 
-class action_t;
-
-enum eOpcodeType
-{
-    OPCODE_TYPE_FUNCTION = 0,
-    OPCODE_TYPE_SINGLE   = 1,
-    OPCODE_TYPE_TIMEOUT  = 2,
-    OPCODE_TYPE_TIMED    = 3,
-};
-
-struct opcode_t
-{
-    inline opcode_t(s16 type)
-        : m_type(type)
-        , m_index(-1)
-    {
-    }
-    s16 m_type;   // type
-    s16 m_index;  // index (0 to 8191)
-};
-
-struct scheduler_t
-{
-    instruction_t* m_instructions;
-    s16            m_instructionCount;
-    s16            m_instructionMaxCount;
-    action_t*      m_callbacks;
-    s16            m_callbackCount;
-    s16            m_callbackMaxCount;
-    u64*           m_values;
-    s16            m_valueCount;
-    s16            m_valueMaxCount;
-    s16*           m_taskqueue;
-    s16            m_taskqueueCount;
-    s16            m_taskqueueMaxCount;
-};
-
-//
-// Concepts
-//
-typedef void* action_t;
-
-struct function_t
-{
-    inline function_t(bool (*function)(void*), void* param)
-        : m_type(OPCODE_TYPE_FUNCTION)
-        , m_function(function)
-        , m_param(param)
-    {
-    }
-    opcode_t m_type;
-    bool (*m_function)(void*);
-    void* m_param;
-};
-
-struct single_t
-{
-    inline single_t(action_t* onAction)
-        : m_type(OPCODE_TYPE_SINGLE)
-        , m_onAction(onAction)
-    {
-    }
-    opcode_t  m_type;
-    action_t* m_onAction;
-};
-
-struct timeout_t
-{
-    inline timeout_t(u64 timeoutInMillis, action_t* onAction, action_t* onFinished, action_t* onTimeout)
-        : m_type(OPCODE_TYPE_TIMEOUT)
-        , m_timeoutInMillis(timeoutInMillis)
-        , m_onAction(onAction)
-        , m_onFinished(onFinished)
-        , m_onTimeout(onTimeout)
-    {
-    }
-    opcode_t  m_type;
-    u64       m_timeoutInMillis;
-    action_t* m_onAction;
-    action_t* m_onFinished;
-    action_t* m_onTimeout;
-};
-
-struct timed_t
-{
-    inline timed_t(u64 intervalInMillis, action_t* onAction)
-        : m_type(OPCODE_TYPE_TIMED)
-        , m_onAction(onAction)
-        , m_intervalInMillis(intervalInMillis)
-        , m_lastRunTimeInMillis(0)
-    {
-    }
-    opcode_t  m_type;
-    action_t* m_onAction;
-    u64       m_intervalInMillis;
-    u64       m_lastRunTimeInMillis;
-};
-
-// ----------------------------------------------------------------------------------
-// ----------------------------------------------------------------------------------
-
-// Task based actions
-bool funcStartConnectionToWiFi(void* param) { return false; }
-bool funcIsConnectedToWiFi(void* param) { return false; }
-bool funcStartConnectionToRemoteServer(void* param) { return false; }
-bool funcIsConnectedToRemoteServer(void* param) { return false; }
-bool funcStartReceiveNewConfigurationFromAccessPoint(void* param) { return false; }
-bool funcStartReadingSensors(void* param) { return false; }
-
-bool funcReadBH1750Sensor(void* param) { return false; }
-bool funcReadBME280Sensor(void* param) { return false; }
-bool funcReadSCD41Sensor(void* param) { return false; }
-
-// Actions
-
-function_t task_functions[] = {
-    function_t(funcIsConnectedToWiFi, nullptr),                            // WiFi
-    function_t(funcStartConnectionToWiFi, nullptr),                        // WiFi
-    function_t(funcIsConnectedToRemoteServer, nullptr),                    // Remote Server
-    function_t(funcStartConnectionToRemoteServer, nullptr),                // Remote Server
-    function_t(funcStartReceiveNewConfigurationFromAccessPoint, nullptr),  // Configuration
-    function_t(funcStartReadingSensors, nullptr),                          // Read Sensors
-    function_t(funcReadBH1750Sensor, nullptr),                             // BH1750 sensor reading
-    function_t(funcReadBME280Sensor, nullptr),                             // BME280 sensor reading
-    function_t(funcReadSCD41Sensor, nullptr),                              // SCD41 sensor reading
-};
-
-// Tasks that run one single time
-
-single_t single_tasks[] = {
-    single_t(&callbacks[1]),  // Start WiFi connection
-    single_t(&callbacks[4]),  // Start Configuration from Access Point
-};
-
-// Tasks with a timeout
-
-timeout_t timeout_tasks[] = {
-    timeout_t(10 * 1000, &callbacks[0], &callbacks[3], &callbacks[4]),  // WiFi connection
-    timeout_t(60 * 1000, &callbacks[2], &callbacks[5], &callbacks[4]),  // Remote Server connection
-};
-
-// Tasks running on a time interval
-
-timed_t timed_tasks[] = {
-    timed_t(2 * 1000, &task_functions[6]),   // BH1750 sensor reading task
-    timed_t(60 * 1000, &task_functions[7]),  // BME280 sensor reading task
-    timed_t(5 * 1000, &task_functions[8]),   // SCD41 sensor reading task
-};
-
-#ifdef TARGET_ESP32
-
-#    include "Arduino.h"
-
 namespace ncore
 {
-    namespace ntask
+    //
+    // Concepts
+    //
+
+    struct scheduler_t;
+
+    typedef s32 task_result_t;
+    typedef task_result_t (*function_t)(scheduler_t*, void*);
+
+    const task_result_t RESULT_OK    = 0;
+    const task_result_t RESULT_DONE  = 1;
+    const task_result_t RESULT_ERROR = -1;
+
+    struct scheduler_t
     {
+        void clear();
 
-    }  // namespace ntask
-}  // namespace ncore
+        void add_task(function_t function, void* param);
+        void add_guard_task(function_t function, void* param);
+        void add_timeout_task(s32 timeout_ms, function_t function, void* param);
+        void add_periodic_task(s32 period_ms, function_t function, void* param);
+    };
 
-#else
+    // ----------------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------------
 
-namespace ncore
-{
-    namespace ntask
+    // WiFi
+    task_result_t start_connection_to_wifi(scheduler_t* scheduler, void* param);
+    task_result_t is_wifi_connected(scheduler_t* scheduler, void* param);
+
+    // Remote Server
+    task_result_t start_connection_to_remote(scheduler_t* scheduler, void* param);
+    task_result_t is_remote_connected(scheduler_t* scheduler, void* param);
+
+    // WiFi and Remote Server
+    task_result_t is_connected(scheduler_t* scheduler, void* param);
+
+    // Configuration Mode
+    task_result_t start_configuration(scheduler_t* scheduler, void* param);
+    task_result_t receive_configuration(scheduler_t* scheduler, void* param);
+
+    // Sensor
+    task_result_t start_reading_sensors(scheduler_t* scheduler, void* param);
+    task_result_t read_sensor_BH1750(scheduler_t* scheduler, void* param);
+    task_result_t read_sensor_BME280(scheduler_t* scheduler, void* param);
+    task_result_t read_sensor_SCD41(scheduler_t* scheduler, void* param);
+
+    // High level tasks
+    task_result_t task_wifi_start(scheduler_t* scheduler, void* param);
+    task_result_t task_wifi_until_connected(scheduler_t* scheduler, void* param);
+    task_result_t task_remote_server_start(scheduler_t* scheduler, void* param);
+    task_result_t task_remote_server_until_connected(scheduler_t* scheduler, void* param);
+    task_result_t task_config_start(scheduler_t* scheduler, void* param);
+    task_result_t task_config_wait_for_config(scheduler_t* scheduler, void* param);
+    task_result_t task_schedule_sensor_reading(scheduler_t* scheduler, void* param);
+
+    task_result_t task_schedule_sensor_reading(scheduler_t* scheduler, void* param)
     {
+        scheduler->clear();
+        scheduler->add_guard_task(is_connected, param);
+        scheduler->add_periodic_task(5000, read_sensor_BH1750, param);
+        scheduler->add_periodic_task(60000, read_sensor_BME280, param);
+        scheduler->add_periodic_task(5000, read_sensor_SCD41, param);
+    }
 
-    }  // namespace ntask
+    task_result_t task_config_receive_new_configuration(scheduler_t* scheduler, void* param)
+    {
+        if (receive_configuration(scheduler, param) == RESULT_DONE)
+        {
+            scheduler->clear();
+            task_wifi_start(scheduler, param);
+        }
+    }
+
+    task_result_t task_config_wait_for_connection(scheduler_t* scheduler, void* param)
+    {
+        // TODO
+        return RESULT_OK;
+    }
+
+    task_result_t task_config_start(scheduler_t* scheduler, void* param)
+    {
+        // TODO
+        return RESULT_DONE;
+    }
+
+    task_result_t task_remote_server_start(scheduler_t* scheduler, void* param)
+    {
+        // TODO
+        return RESULT_DONE;
+    }
+
+    task_result_t task_remote_server_until_connected(scheduler_t* scheduler, void* param)
+    {
+        // TODO
+        return RESULT_OK;
+    }
+
+    task_result_t task_wifi_start(scheduler_t* scheduler, void* param)
+    {
+        if (start_connection_to_wifi(scheduler, param) == RESULT_ERROR)
+        {
+            scheduler->clear();
+            scheduler->add_task(task_config_start, param);
+        }
+        else
+        {
+            scheduler->clear();
+            scheduler->add_timeout_task(5000, task_wifi_until_connected, param);
+        }
+        return RESULT_DONE;
+    }
+
+    task_result_t task_wifi_until_connected(scheduler_t* scheduler, void* param)
+    {
+        // TODO
+        return RESULT_OK;
+    }
+
+    task_result_t task_setup(scheduler_t* scheduler, void* param)
+    {
+        scheduler->add_task(task_wifi_start, param);
+        return RESULT_DONE;
+    }
+
+    task_result_t is_connected(scheduler_t* scheduler, void* param)
+    {
+        // if WiFi and Remote are still connected return OK, otherwise return ERROR
+        return RESULT_OK;
+    }
+
 }  // namespace ncore
-
-#endif
