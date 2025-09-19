@@ -64,9 +64,10 @@ namespace ncore
     //
 
     struct scheduler_t;
+    struct state_t;
 
     typedef s32 task_result_t;
-    typedef task_result_t (*function_t)(scheduler_t*, void*);
+    typedef task_result_t (*function_t)(scheduler_t*, state_t*);
 
     const task_result_t RESULT_OK    = 0;
     const task_result_t RESULT_DONE  = 1;
@@ -76,115 +77,127 @@ namespace ncore
     {
         void clear();
 
-        void add_task(function_t function, void* param);
-        void add_guard_task(function_t function, void* param);
-        void add_timeout_task(s32 timeout_ms, function_t function, void* param);
-        void add_periodic_task(s32 period_ms, function_t function, void* param);
+        void add_task(function_t function, state_t* state);
+        void add_guard_task(function_t function, state_t* state);
+        void add_timeout_task(s32 timeout_ms, function_t function, state_t* state);
+        void add_periodic_task(s32 period_ms, function_t function, state_t* state);
+    };
+
+    struct wifi_state_t;
+    struct remote_state_t;
+    struct app_state_t;
+
+    struct state_t
+    {
+        wifi_state_t*   wifi;
+        remote_state_t* remote;
+        app_state_t*    app;
     };
 
     // ----------------------------------------------------------------------------------
+    // User Example
     // ----------------------------------------------------------------------------------
 
     // WiFi
-    task_result_t start_connection_to_wifi(scheduler_t* scheduler, void* param);
-    task_result_t is_wifi_connected(scheduler_t* scheduler, void* param);
+    task_result_t func_start_connection_to_wifi(scheduler_t* scheduler, state_t* state);
+    task_result_t func_is_wifi_connected(scheduler_t* scheduler, state_t* state);
 
     // Remote Server
-    task_result_t start_connection_to_remote(scheduler_t* scheduler, void* param);
-    task_result_t is_remote_connected(scheduler_t* scheduler, void* param);
+    task_result_t func_start_connection_to_remote(scheduler_t* scheduler, state_t* state);
+    task_result_t func_is_remote_connected(scheduler_t* scheduler, state_t* state);
 
     // WiFi and Remote Server
-    task_result_t is_connected(scheduler_t* scheduler, void* param);
+    task_result_t func_is_connected(scheduler_t* scheduler, state_t* state);
 
     // Configuration Mode
-    task_result_t start_configuration(scheduler_t* scheduler, void* param);
-    task_result_t receive_configuration(scheduler_t* scheduler, void* param);
+    task_result_t func_start_configuration(scheduler_t* scheduler, state_t* state);
+    task_result_t func_receive_configuration(scheduler_t* scheduler, state_t* state);
 
     // Sensor
-    task_result_t start_reading_sensors(scheduler_t* scheduler, void* param);
-    task_result_t read_sensor_BH1750(scheduler_t* scheduler, void* param);
-    task_result_t read_sensor_BME280(scheduler_t* scheduler, void* param);
-    task_result_t read_sensor_SCD41(scheduler_t* scheduler, void* param);
+    task_result_t func_start_reading_sensors(scheduler_t* scheduler, state_t* state);
+    task_result_t func_read_sensor_BH1750(scheduler_t* scheduler, state_t* state);
+    task_result_t func_read_sensor_BME280(scheduler_t* scheduler, state_t* state);
+    task_result_t func_read_sensor_SCD41(scheduler_t* scheduler, state_t* state);
 
     // High level tasks
-    task_result_t task_wifi_start(scheduler_t* scheduler, void* param);
-    task_result_t task_wifi_until_connected(scheduler_t* scheduler, void* param);
-    task_result_t task_remote_server_start(scheduler_t* scheduler, void* param);
-    task_result_t task_remote_server_until_connected(scheduler_t* scheduler, void* param);
-    task_result_t task_config_start(scheduler_t* scheduler, void* param);
-    task_result_t task_config_wait_for_config(scheduler_t* scheduler, void* param);
-    task_result_t task_schedule_sensor_reading(scheduler_t* scheduler, void* param);
+    task_result_t func_wifi_start(scheduler_t* scheduler, state_t* state);
+    task_result_t func_wifi_until_connected(scheduler_t* scheduler, state_t* state);
+    task_result_t func_remote_server_start(scheduler_t* scheduler, state_t* state);
+    task_result_t func_remote_server_until_connected(scheduler_t* scheduler, state_t* state);
+    task_result_t func_config_start(scheduler_t* scheduler, state_t* state);
+    task_result_t func_config_wait_for_config(scheduler_t* scheduler, state_t* state);
+    task_result_t func_schedule_sensor_reading(scheduler_t* scheduler, state_t* state);
 
-    task_result_t task_schedule_sensor_reading(scheduler_t* scheduler, void* param)
+    task_result_t func_schedule_sensor_reading(scheduler_t* scheduler, state_t* state)
     {
         scheduler->clear();
-        scheduler->add_guard_task(is_connected, param);
-        scheduler->add_periodic_task(5000, read_sensor_BH1750, param);
-        scheduler->add_periodic_task(60000, read_sensor_BME280, param);
-        scheduler->add_periodic_task(5000, read_sensor_SCD41, param);
+        scheduler->add_guard_task(func_is_connected, state);
+        scheduler->add_periodic_task(5000, func_read_sensor_BH1750, state);
+        scheduler->add_periodic_task(60000, func_read_sensor_BME280, state);
+        scheduler->add_periodic_task(5000, func_read_sensor_SCD41, state);
     }
 
-    task_result_t task_config_receive_new_configuration(scheduler_t* scheduler, void* param)
+    task_result_t func_config_receive_new_configuration(scheduler_t* scheduler, state_t* state)
     {
-        if (receive_configuration(scheduler, param) == RESULT_DONE)
+        if (func_receive_configuration(scheduler, state) == RESULT_DONE)
         {
             scheduler->clear();
-            task_wifi_start(scheduler, param);
+            func_wifi_start(scheduler, state);
         }
     }
 
-    task_result_t task_config_wait_for_connection(scheduler_t* scheduler, void* param)
+    task_result_t func_config_wait_for_connection(scheduler_t* scheduler, state_t* state)
     {
         // TODO
         return RESULT_OK;
     }
 
-    task_result_t task_config_start(scheduler_t* scheduler, void* param)
+    task_result_t func_config_start(scheduler_t* scheduler, state_t* state)
     {
         // TODO
         return RESULT_DONE;
     }
 
-    task_result_t task_remote_server_start(scheduler_t* scheduler, void* param)
+    task_result_t func_remote_server_start(scheduler_t* scheduler, state_t* state)
     {
         // TODO
         return RESULT_DONE;
     }
 
-    task_result_t task_remote_server_until_connected(scheduler_t* scheduler, void* param)
+    task_result_t func_remote_server_until_connected(scheduler_t* scheduler, state_t* state)
     {
         // TODO
         return RESULT_OK;
     }
 
-    task_result_t task_wifi_start(scheduler_t* scheduler, void* param)
+    task_result_t func_wifi_start(scheduler_t* scheduler, state_t* state)
     {
-        if (start_connection_to_wifi(scheduler, param) == RESULT_ERROR)
+        if (func_start_connection_to_wifi(scheduler, state) == RESULT_ERROR)
         {
             scheduler->clear();
-            scheduler->add_task(task_config_start, param);
+            scheduler->add_task(func_config_start, state);
         }
         else
         {
             scheduler->clear();
-            scheduler->add_timeout_task(5000, task_wifi_until_connected, param);
+            scheduler->add_timeout_task(5000, func_wifi_until_connected, state);
         }
         return RESULT_DONE;
     }
 
-    task_result_t task_wifi_until_connected(scheduler_t* scheduler, void* param)
+    task_result_t func_wifi_until_connected(scheduler_t* scheduler, state_t* state)
     {
         // TODO
         return RESULT_OK;
     }
 
-    task_result_t task_setup(scheduler_t* scheduler, void* param)
+    task_result_t func_setup(scheduler_t* scheduler, state_t* state)
     {
-        scheduler->add_task(task_wifi_start, param);
+        scheduler->add_task(func_wifi_start, state);
         return RESULT_DONE;
     }
 
-    task_result_t is_connected(scheduler_t* scheduler, void* param)
+    task_result_t func_is_connected(scheduler_t* scheduler, state_t* state)
     {
         // if WiFi and Remote are still connected return OK, otherwise return ERROR
         return RESULT_OK;
